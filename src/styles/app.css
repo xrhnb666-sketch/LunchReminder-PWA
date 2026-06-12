@@ -177,20 +177,60 @@ img {
   font-weight: 700;
 }
 
-.meal-time-input {
-  width: 128px;
-  min-height: 42px;
-  border: 0;
-  padding: 0;
+.meal-time-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 5.2ch;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.meal-time-display {
+  display: block;
   color: #f79b37;
-  background: transparent;
   font-size: 36px;
   line-height: 1;
   font-weight: 800;
-  appearance: none;
+  white-space: nowrap;
+  letter-spacing: 0;
+  pointer-events: none;
 }
 
-.meal-card-dinner .meal-time-input {
+.meal-time-native-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.meal-time-native-input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.meal-time-native-input::-webkit-clear-button,
+.meal-time-native-input::-webkit-inner-spin-button {
+  display: none;
+  -webkit-appearance: none;
+}
+
+.meal-card-dinner .meal-time-display {
   color: #6eae67;
 }
 

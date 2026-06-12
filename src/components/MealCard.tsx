@@ -13,13 +13,22 @@ export const MealCard = ({ meal, skippedToday, onTimeChange, onEnabledChange }: 
     <img className="meal-card-icon" src={meal.icon} alt="" />
     <label className="meal-card-body">
       <span className="meal-card-title">{meal.title}</span>
-      <input
-        className="meal-time-input"
-        type="time"
-        value={meal.time}
-        aria-label={`${meal.title}时间`}
-        onChange={(event) => onTimeChange(event.target.value)}
-      />
+      <div
+        className="meal-time-picker"
+        role="button"
+        aria-label={`修改${meal.title}提醒时间，当前${meal.time}`}
+      >
+        <span className="meal-time-display" aria-hidden="true">
+          {meal.time}
+        </span>
+        <input
+          className="meal-time-native-input"
+          type="time"
+          value={meal.time}
+          aria-label={`修改${meal.title}提醒时间，当前${meal.time}`}
+          onChange={(event) => onTimeChange(event.target.value)}
+        />
+      </div>
       <span className="meal-card-subtitle">{skippedToday ? '今日已跳过' : meal.subtitle}</span>
     </label>
     <ToggleSwitch
