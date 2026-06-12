@@ -1,0 +1,16 @@
+export const assets = {
+  breakfast: '/assets/breakfast.png',
+  lunch: '/assets/lunch.png',
+  dinner: '/assets/dinner.png',
+  skipCloud: '/assets/skip_cloud.png',
+  bear: '/assets/bear.png',
+  plant: '/assets/plant.png',
+  stars: '/assets/stars.png',
+  starSmall: '/assets/star_small.png',
+  cloudBg: '/assets/cloud_bg.png',
+  splashLogo: '/assets/splash_logo.png',
+  navHome: '/assets/nav_home.png',
+  navHistory: '/assets/nav_history.png',
+  navStats: '/assets/nav_stats.png',
+  navSettings: '/assets/nav_settings.png',
+} as const
