@@ -17,7 +17,7 @@
 		}	
 	],
 	"vars": {
-		"VAPID_PUBLIC_KEY": "BDkkptI1a-Dq_eXmgvisOatMO-Ss6z1I-BvRWqIiazFummGOJqtSNRkIl4C_5ZhbKfXkUNVf8ra13OH4QH3whJA",
+		"VAPID_PUBLIC_KEY": "BBm0BIrmbQnHYKuVUEg6glk9PXr7T3RNytoUW0ElYz0MBA-SE6mh62n1ABigyXCSOLZ_ojyqNlTqY9UXlsmi2w8",
 		"VAPID_SUBJECT": "mailto:2545132611@qq.com",
 		"ALLOWED_ORIGIN": "https://lunch-reminder-pwa.vercel.app"
 	},

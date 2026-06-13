@@ -3,6 +3,26 @@ import { isIOS, isStandaloneMode } from '../utils/dateUtils'
 
 const CLIENT_ID_KEY = 'lunchreminder:push-client-id'
 
+interface SubscriptionDiagnostics {
+  exists: boolean
+  endpointHost?: string
+  endpointFingerprint?: string
+  p256dhFingerprint?: string
+  authFingerprint?: string
+  p256dhLength?: number
+  authLength?: number
+  contentEncodings?: string[]
+  updatedAt?: string
+}
+
+export interface PushDiagnosticsComparison {
+  endpointMatches: boolean
+  p256dhMatches: boolean
+  authMatches: boolean
+  applicationServerKeyMatches: boolean
+  workerDiagnostics: SubscriptionDiagnostics
+}
+
 export class PushServiceError extends Error {
   code?: string
 
@@ -43,6 +63,11 @@ export const getPushClientId = () => {
   return clientId
 }
 
+const supportedContentEncodings = () => {
+  const pushManager = PushManager as typeof PushManager & { supportedContentEncodings?: readonly string[] }
+  return Array.from(pushManager.supportedContentEncodings ?? [])
+}
+
 const urlBase64ToUint8Array = (base64String: string) => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = `${base64String}${padding}`.replace(/-/g, '+').replace(/_/g, '/')
@@ -52,6 +77,21 @@ const urlBase64ToUint8Array = (base64String: string) => {
     outputArray[index] = rawData.charCodeAt(index)
   }
   return outputArray
+}
+
+const arrayBufferToBase64Url = (buffer: ArrayBuffer) => {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let index = 0; index < bytes.length; index += 1) binary += String.fromCharCode(bytes[index])
+  return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+const fingerprintValue = async (value: string) => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 12)
 }
 
 export const getPushSupportIssue = () => {
@@ -105,6 +145,7 @@ export const uploadSubscription = async (settings: ReminderSettings, subscriptio
     body: JSON.stringify({
       clientId: getPushClientId(),
       subscription: subscription.toJSON(),
+      contentEncodings: supportedContentEncodings(),
       timezone: timezone(),
       settings,
     }),
@@ -128,7 +169,48 @@ export const deletePushSubscription = async () => {
 }
 
 export const requestTestPush = async () =>
-  requestJson<{ ok: true }>(`/api/subscriptions/${getPushClientId()}/test`, {
+  requestJson<{ ok: true; pushServiceStatus: number; testType: 'payload' }>(`/api/subscriptions/${getPushClientId()}/test`, {
     method: 'POST',
     body: JSON.stringify({}),
   })
+
+export const requestEmptyTestPush = async () =>
+  requestJson<{ ok: true; pushServiceStatus: number; testType: 'empty' }>(
+    `/api/subscriptions/${getPushClientId()}/test-empty`,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  )
+
+export const diagnosePushSubscription = async (): Promise<PushDiagnosticsComparison> => {
+  const subscription = await getExistingPushSubscription()
+  if (!subscription) throw new PushServiceError('当前浏览器没有可诊断的推送订阅', 'invalid_subscription')
+  const subscriptionJson = subscription.toJSON()
+  const endpoint = subscriptionJson.endpoint
+  const p256dh = subscriptionJson.keys?.p256dh
+  const auth = subscriptionJson.keys?.auth
+  if (!endpoint || !p256dh || !auth) throw new PushServiceError('浏览器推送订阅无效，请重新启用', 'invalid_subscription')
+
+  const [endpointFingerprint, p256dhFingerprint, authFingerprint, publicKey] = await Promise.all([
+    fingerprintValue(endpoint),
+    fingerprintValue(p256dh),
+    fingerprintValue(auth),
+    getVapidPublicKey(),
+  ])
+  const workerDiagnostics = await requestJson<SubscriptionDiagnostics>(
+    `/api/subscriptions/${getPushClientId()}/diagnostics`,
+  )
+  const applicationServerKey = subscription.options.applicationServerKey
+  const applicationServerKeyMatches = applicationServerKey
+    ? arrayBufferToBase64Url(applicationServerKey) === publicKey
+    : false
+
+  return {
+    endpointMatches: endpointFingerprint === workerDiagnostics.endpointFingerprint,
+    p256dhMatches: p256dhFingerprint === workerDiagnostics.p256dhFingerprint,
+    authMatches: authFingerprint === workerDiagnostics.authFingerprint,
+    applicationServerKeyMatches,
+    workerDiagnostics,
+  }
+}

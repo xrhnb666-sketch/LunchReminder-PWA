@@ -26,6 +26,12 @@ export interface PushResult {
 	statusCode: number;
 }
 
+const assertSubscription = (client: StoredClient) => {
+	if (!client.subscription.endpoint || !client.subscription.keys?.p256dh || !client.subscription.keys?.auth) {
+		throw new PushDeliveryError("invalid_subscription", "Push subscription is missing required fields");
+	}
+};
+
 export const configureWebPush = (env: Env) => {
 	if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
 		throw new PushDeliveryError("vapid_config_missing", "VAPID configuration is missing");
@@ -48,20 +54,42 @@ export const errorCodeForStatus = (statusCode?: number): PushErrorCode => {
 	return "push_delivery_failed";
 };
 
+const pushErrorStatusCode = (error: unknown) =>
+	typeof error === "object" && error !== null && "statusCode" in error
+		? Number((error as { statusCode?: number }).statusCode)
+		: undefined;
+
 export const sendPushPayload = async (env: Env, client: StoredClient, payload: PushPayload): Promise<PushResult> => {
-	if (!client.subscription.endpoint || !client.subscription.keys?.p256dh || !client.subscription.keys?.auth) {
-		throw new PushDeliveryError("invalid_subscription", "Push subscription is missing required fields");
-	}
+	assertSubscription(client);
 	if (env.VAPID_PRIVATE_KEY === "test_private_key") return { ok: true, statusCode: 201 };
 	configureWebPush(env);
 	try {
 		const response = await webpush.sendNotification(client.subscription, JSON.stringify(payload), { TTL: 300 });
 		return { ok: true, statusCode: response.statusCode };
 	} catch (error) {
-		const statusCode = typeof error === "object" && error !== null && "statusCode" in error
-			? Number((error as { statusCode?: number }).statusCode)
-			: undefined;
+		const statusCode = pushErrorStatusCode(error);
 		throw new PushDeliveryError(errorCodeForStatus(statusCode), "Push delivery failed", statusCode ?? null);
+	}
+};
+
+export const sendEmptyPush = async (env: Env, client: StoredClient): Promise<PushResult> => {
+	assertSubscription(client);
+	if (env.VAPID_PRIVATE_KEY === "test_private_key") return { ok: true, statusCode: 201 };
+	configureWebPush(env);
+	try {
+		const response = await webpush.sendNotification(client.subscription, null, {
+			TTL: 60,
+			urgency: "high",
+			vapidDetails: {
+				subject: env.VAPID_SUBJECT,
+				publicKey: env.VAPID_PUBLIC_KEY,
+				privateKey: env.VAPID_PRIVATE_KEY,
+			},
+		});
+		return { ok: true, statusCode: response.statusCode };
+	} catch (error) {
+		const statusCode = pushErrorStatusCode(error);
+		throw new PushDeliveryError(errorCodeForStatus(statusCode), "Empty push delivery failed", statusCode ?? null);
 	}
 };
 

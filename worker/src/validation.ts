@@ -112,6 +112,15 @@ export const validateSubscription = (value: unknown): PushSubscriptionJSON => {
 	};
 };
 
+export const validateContentEncodings = (value: unknown): string[] => {
+	if (!Array.isArray(value)) return [];
+	return value
+		.filter((item): item is string => typeof item === "string")
+		.map((item) => item.trim())
+		.filter((item) => item.length > 0 && item.length <= 40)
+		.slice(0, 5);
+};
+
 export const readJson = async (request: Request, maxBytes = 32_768) => {
 	const contentType = request.headers.get("Content-Type") ?? "";
 	if (!contentType.toLowerCase().includes("application/json")) throw new BadRequest("content_type_required");

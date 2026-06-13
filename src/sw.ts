@@ -30,28 +30,32 @@ self.skipWaiting()
 clientsClaim()
 
 self.addEventListener('push', (event) => {
-  const fallback: Required<Pick<PushPayload, 'title' | 'body' | 'icon' | 'badge' | 'tag'>> = {
-    title: '三餐提醒',
-    body: '记得按时吃饭～',
+  let payload: Required<Pick<PushPayload, 'title' | 'body' | 'icon' | 'badge' | 'tag'>> & Pick<PushPayload, 'data'> = {
+    title: '三餐提醒空推送测试',
+    body: '浏览器已收到无内容推送',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
-    tag: 'lunch-reminder',
+    tag: 'lunch-reminder-empty-test',
+    data: { url: '/' },
   }
 
-  const payload: PushPayload = (() => {
+  if (event.data) {
     try {
-      return (event.data?.json() as PushPayload) ?? {}
+      payload = {
+        ...payload,
+        ...(event.data.json() as PushPayload),
+      }
     } catch {
-      return {}
+      payload.body = event.data.text() || payload.body
     }
-  })()
+  }
 
   event.waitUntil(
-    self.registration.showNotification(payload.title || fallback.title, {
-      body: payload.body || fallback.body,
-      icon: payload.icon || fallback.icon,
-      badge: payload.badge || fallback.badge,
-      tag: payload.tag || fallback.tag,
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: payload.icon,
+      badge: payload.badge,
+      tag: payload.tag,
       data: {
         url: '/',
         ...payload.data,

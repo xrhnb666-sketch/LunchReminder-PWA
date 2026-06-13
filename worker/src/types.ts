@@ -43,6 +43,7 @@ export interface StoredClient {
 	version: 1;
 	clientId: string;
 	subscription: PushSubscriptionJSON;
+	contentEncodings: string[];
 	timezone: string;
 	settings: ReminderSettings;
 	createdAt: string;

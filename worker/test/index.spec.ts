@@ -34,8 +34,19 @@ const sampleSubscription = {
 	endpoint: "https://push.example.test/send/abc",
 	expirationTime: null,
 	keys: {
-		p256dh: "p256dh",
-		auth: "auth",
+		p256dh: "public-key-for-test",
+		auth: "auth-secret-for-test",
+	},
+};
+
+const sampleContentEncodings = ["aes128gcm"];
+
+const sampleSubscriptionV2 = {
+	endpoint: "https://push.example.test/send/new-subscription",
+	expirationTime: null,
+	keys: {
+		p256dh: "p256dh-new",
+		auth: "auth-new",
 	},
 };
 
@@ -99,12 +110,15 @@ describe("LunchReminder Push Worker", () => {
 			body: JSON.stringify({
 				clientId: sampleClientId,
 				subscription: sampleSubscription,
+				contentEncodings: sampleContentEncodings,
 				timezone: "Asia/Taipei",
 				settings: sampleSettings,
 			}),
 		});
 		expect(created.status).toBe(200);
-		expect(await testEnv().REMINDERS.get(clientKey(sampleClientId))).not.toBeNull();
+		const stored = await testEnv().REMINDERS.get<StoredClient>(clientKey(sampleClientId), "json");
+		expect(stored?.subscription.endpoint).toBe(sampleSubscription.endpoint);
+		expect(stored?.contentEncodings).toEqual(sampleContentEncodings);
 
 		const updated = await call(`/api/subscriptions/${sampleClientId}/settings`, {
 			method: "PUT",
@@ -120,18 +134,112 @@ describe("LunchReminder Push Worker", () => {
 		expect(await testEnv().REMINDERS.get(clientKey(sampleClientId))).toBeNull();
 	});
 
+	it("stores the latest subscription without letting old data overwrite it", async () => {
+		const first = await call("/api/subscriptions", {
+			method: "POST",
+			body: JSON.stringify({
+				clientId: sampleClientId,
+				subscription: sampleSubscription,
+				contentEncodings: ["aesgcm"],
+				timezone: "Asia/Taipei",
+				settings: sampleSettings,
+			}),
+		});
+		expect(first.status).toBe(200);
+
+		const second = await call("/api/subscriptions", {
+			method: "POST",
+			body: JSON.stringify({
+				clientId: sampleClientId,
+				subscription: sampleSubscriptionV2,
+				contentEncodings: sampleContentEncodings,
+				timezone: "Asia/Taipei",
+				settings: sampleSettings,
+			}),
+		});
+		expect(second.status).toBe(200);
+
+		const stored = await testEnv().REMINDERS.get<StoredClient>(clientKey(sampleClientId), "json");
+		expect(stored?.subscription.endpoint).toBe(sampleSubscriptionV2.endpoint);
+		expect(stored?.subscription.keys.p256dh).toBe(sampleSubscriptionV2.keys.p256dh);
+		expect(stored?.subscription.keys.auth).toBe(sampleSubscriptionV2.keys.auth);
+		expect(stored?.contentEncodings).toEqual(sampleContentEncodings);
+	});
+
+	it("returns safe subscription diagnostics", async () => {
+		await call("/api/subscriptions", {
+			method: "POST",
+			body: JSON.stringify({
+				clientId: sampleClientId,
+				subscription: sampleSubscription,
+				contentEncodings: sampleContentEncodings,
+				timezone: "Asia/Taipei",
+				settings: sampleSettings,
+			}),
+		});
+
+		const response = await call(`/api/subscriptions/${sampleClientId}/diagnostics`);
+		const body = await response.json() as {
+			exists: boolean;
+			endpointHost: string;
+			endpointFingerprint: string;
+			p256dhFingerprint: string;
+			authFingerprint: string;
+			p256dhLength: number;
+			authLength: number;
+			contentEncodings: string[];
+		};
+
+		expect(response.status).toBe(200);
+		expect(body.exists).toBe(true);
+		expect(body.endpointHost).toBe("push.example.test");
+		expect(body.endpointFingerprint).toHaveLength(12);
+		expect(body.p256dhFingerprint).toHaveLength(12);
+		expect(body.authFingerprint).toHaveLength(12);
+		expect(body.p256dhLength).toBe(sampleSubscription.keys.p256dh.length);
+		expect(body.authLength).toBe(sampleSubscription.keys.auth.length);
+		expect(body.contentEncodings).toEqual(sampleContentEncodings);
+		expect(JSON.stringify(body)).not.toContain(sampleSubscription.endpoint);
+		expect(JSON.stringify(body)).not.toContain(sampleSubscription.keys.p256dh);
+		expect(JSON.stringify(body)).not.toContain(sampleSubscription.keys.auth);
+	});
+
 	it("rate limits test notifications", async () => {
 		await call("/api/subscriptions", {
 			method: "POST",
 			body: JSON.stringify({
 				clientId: sampleClientId,
 				subscription: sampleSubscription,
+				contentEncodings: sampleContentEncodings,
 				timezone: "Asia/Taipei",
 				settings: sampleSettings,
 			}),
 		});
-		expect((await call(`/api/subscriptions/${sampleClientId}/test`, { method: "POST", body: "{}" })).status).toBe(200);
+		const payloadTest = await call(`/api/subscriptions/${sampleClientId}/test`, { method: "POST", body: "{}" });
+		expect(payloadTest.status).toBe(200);
+		expect(await payloadTest.json()).toEqual({ ok: true, pushServiceStatus: 201, testType: "payload" });
 		expect((await call(`/api/subscriptions/${sampleClientId}/test`, { method: "POST", body: "{}" })).status).toBe(429);
+	});
+
+	it("sends empty test notifications with push service status", async () => {
+		await call("/api/subscriptions", {
+			method: "POST",
+			body: JSON.stringify({
+				clientId: sampleClientId,
+				subscription: sampleSubscription,
+				contentEncodings: sampleContentEncodings,
+				timezone: "Asia/Taipei",
+				settings: sampleSettings,
+			}),
+		});
+
+		const response = await call(`/api/subscriptions/${sampleClientId}/test-empty`, {
+			method: "POST",
+			body: "{}",
+		});
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ ok: true, pushServiceStatus: 201, testType: "empty" });
 	});
 
 	it("returns safe push errors for missing VAPID configuration", async () => {
@@ -140,6 +248,7 @@ describe("LunchReminder Push Worker", () => {
 			version: 1,
 			clientId: sampleClientId,
 			subscription: sampleSubscription,
+			contentEncodings: sampleContentEncodings,
 			timezone: "Asia/Taipei",
 			settings: sampleSettings,
 			createdAt: new Date().toISOString(),
@@ -167,6 +276,7 @@ describe("LunchReminder Push Worker", () => {
 				...sampleSubscription,
 				keys: { p256dh: sampleSubscription.keys.p256dh, auth: "" },
 			},
+			contentEncodings: sampleContentEncodings,
 			timezone: "Asia/Taipei",
 			settings: sampleSettings,
 			createdAt: new Date().toISOString(),
@@ -190,6 +300,7 @@ describe("LunchReminder Push Worker", () => {
 			version: 1,
 			clientId: sampleClientId,
 			subscription: sampleSubscription,
+			contentEncodings: sampleContentEncodings,
 			timezone: "Asia/Taipei",
 			settings: sampleSettings,
 			createdAt: new Date().toISOString(),
@@ -207,6 +318,7 @@ describe("LunchReminder Push Worker", () => {
 			version: 1,
 			clientId: sampleClientId,
 			subscription: sampleSubscription,
+			contentEncodings: sampleContentEncodings,
 			timezone: "Asia/Taipei",
 			settings: { ...sampleSettings, weekdaysOnly: true, skippedDate: "2026-06-13" },
 			createdAt: new Date().toISOString(),
@@ -222,6 +334,7 @@ describe("LunchReminder Push Worker", () => {
 			version: 1,
 			clientId: sampleClientId,
 			subscription: sampleSubscription,
+			contentEncodings: sampleContentEncodings,
 			timezone: "Asia/Taipei",
 			settings: sampleSettings,
 			createdAt: new Date().toISOString(),

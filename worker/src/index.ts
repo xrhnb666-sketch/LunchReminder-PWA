@@ -1,6 +1,7 @@
 import { getAllowedOrigin, handleOptions, json, withCors } from "./cors";
+import { fingerprintValue, getEndpointHost, getSubscriptionDiagnostics } from "./diagnostics";
 import { getSafeErrorDetails } from "./errors";
-import { PushDeliveryError } from "./push";
+import { PushDeliveryError, sendEmptyPush } from "./push";
 import { sendPushPayload, testPayload } from "./push";
 import { runSchedule } from "./scheduler";
 import type { Env, StoredClient } from "./types";
@@ -10,6 +11,7 @@ import {
 	assertClientId,
 	assertTimezone,
 	readJson,
+	validateContentEncodings,
 	validateSettings,
 	validateSubscription,
 } from "./validation";
@@ -34,6 +36,7 @@ const handlePostSubscription = async (request: Request, env: Env) => {
 		version: 1,
 		clientId,
 		subscription: validateSubscription(input.subscription),
+		contentEncodings: validateContentEncodings(input.contentEncodings),
 		timezone: assertTimezone(input.timezone),
 		settings: validateSettings(input.settings),
 		createdAt: existing?.createdAt ?? now,
@@ -62,6 +65,13 @@ const handlePutSettings = async (request: Request, env: Env, clientId: string) =
 	return json({ ok: true });
 };
 
+const handleDiagnostics = async (env: Env, clientId: string) => {
+	assertClientId(clientId);
+	const client = await getStoredClient(env, clientId);
+	if (!client) return json({ exists: false });
+	return json(await getSubscriptionDiagnostics(client));
+};
+
 const handleDeleteSubscription = async (env: Env, clientId: string) => {
 	assertClientId(clientId);
 	await env.REMINDERS.delete(clientKey(clientId));
@@ -77,7 +87,17 @@ const handleTestNotification = async (env: Env, clientId: string) => {
 		return json({ error: "rate_limited" }, 429);
 	}
 	try {
-		await sendPushPayload(env, client, testPayload());
+		const result = await sendPushPayload(env, client, testPayload());
+		console.log("test_push_sent", {
+			statusCode: result.statusCode,
+			endpointHost: getEndpointHost(client.subscription.endpoint),
+			endpointFingerprint: await fingerprintValue(client.subscription.endpoint),
+			testType: "payload",
+		});
+		client.lastTestSentAt = now.toISOString();
+		client.updatedAt = now.toISOString();
+		await saveStoredClient(env, client);
+		return json({ ok: true, pushServiceStatus: result.statusCode, testType: "payload" });
 	} catch (error) {
 		const details = getSafeErrorDetails(error);
 		console.error("test_push_failed", details);
@@ -97,10 +117,40 @@ const handleTestNotification = async (env: Env, clientId: string) => {
 		}
 		return json({ error: "push_delivery_failed" }, 502);
 	}
-	client.lastTestSentAt = now.toISOString();
-	client.updatedAt = now.toISOString();
-	await saveStoredClient(env, client);
-	return json({ ok: true });
+};
+
+const handleEmptyTestNotification = async (env: Env, clientId: string) => {
+	assertClientId(clientId);
+	const client = await getStoredClient(env, clientId);
+	if (!client) return notFound();
+	try {
+		const result = await sendEmptyPush(env, client);
+		console.log("test_push_sent", {
+			statusCode: result.statusCode,
+			endpointHost: getEndpointHost(client.subscription.endpoint),
+			endpointFingerprint: await fingerprintValue(client.subscription.endpoint),
+			testType: "empty",
+		});
+		return json({ ok: true, pushServiceStatus: result.statusCode, testType: "empty" });
+	} catch (error) {
+		const details = getSafeErrorDetails(error);
+		console.error("test_push_failed", details);
+		if (error instanceof PushDeliveryError) {
+			if (error.code === "push_subscription_expired") {
+				await env.REMINDERS.delete(clientKey(clientId));
+				return json({ error: error.code }, 410);
+			}
+			const status = error.code === "push_authentication_failed"
+				? 502
+				: error.code === "push_rate_limited"
+					? 429
+					: error.code === "vapid_config_missing" || error.code === "invalid_subscription"
+						? 400
+						: 502;
+			return json({ error: error.code }, status);
+		}
+		return json({ error: "push_delivery_failed" }, 502);
+	}
 };
 
 const route = async (request: Request, env: Env) => {
@@ -125,7 +175,9 @@ const route = async (request: Request, env: Env) => {
 		const clientId = segments[2];
 		if (method === "PUT" && segments[3] === "settings") return handlePutSettings(request, env, clientId);
 		if (method === "DELETE" && segments.length === 3) return handleDeleteSubscription(env, clientId);
+		if (method === "GET" && segments[3] === "diagnostics") return handleDiagnostics(env, clientId);
 		if (method === "POST" && segments[3] === "test") return handleTestNotification(env, clientId);
+		if (method === "POST" && segments[3] === "test-empty") return handleEmptyTestNotification(env, clientId);
 	}
 
 	return notFound();
