@@ -5,6 +5,7 @@ import {
   createPushSubscription,
   deletePushSubscription,
   getExistingPushSubscription,
+  getPushErrorMessage,
   getPushSupportIssue,
   requestTestPush,
   syncPushSettings,
@@ -71,7 +72,7 @@ export const usePushNotifications = (settings: ReminderSettings) => {
       setMessage('推送已启用')
     } catch (error) {
       setStatus('sync-failed')
-      setMessage(error instanceof Error ? error.message : '启用推送失败')
+      setMessage(getPushErrorMessage(error, '启用推送失败'))
     }
   }, [settings, supportIssue])
 
@@ -83,7 +84,7 @@ export const usePushNotifications = (settings: ReminderSettings) => {
       setMessage('云端提醒已同步')
     } catch (error) {
       setStatus('sync-failed')
-      setMessage(error instanceof Error ? error.message : '云端提醒同步失败')
+      setMessage(getPushErrorMessage(error, '云端提醒同步失败'))
     } finally {
       setSyncing(false)
     }
@@ -96,7 +97,7 @@ export const usePushNotifications = (settings: ReminderSettings) => {
       setMessage('推送已关闭')
     } catch (error) {
       setStatus('sync-failed')
-      setMessage(error instanceof Error ? error.message : '关闭推送失败')
+      setMessage(getPushErrorMessage(error, '关闭推送失败'))
     }
   }, [])
 
@@ -107,7 +108,7 @@ export const usePushNotifications = (settings: ReminderSettings) => {
       setMessage('测试通知已发送')
     } catch (error) {
       setStatus('sync-failed')
-      setMessage(error instanceof Error ? error.message : '测试通知发送失败')
+      setMessage(getPushErrorMessage(error, '测试通知发送失败'))
     }
   }, [])
 

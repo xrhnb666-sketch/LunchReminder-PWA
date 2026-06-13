@@ -1,17 +1,57 @@
 import webpush from "web-push";
 import type { Env, PushPayload, StoredClient } from "./types";
 
+export type PushErrorCode =
+	| "push_subscription_expired"
+	| "push_authentication_failed"
+	| "push_rate_limited"
+	| "vapid_config_missing"
+	| "invalid_subscription"
+	| "push_delivery_failed";
+
+export class PushDeliveryError extends Error {
+	statusCode: number | null;
+	code: PushErrorCode;
+
+	constructor(code: PushErrorCode, message: string, statusCode: number | null = null) {
+		super(message);
+		this.name = "PushDeliveryError";
+		this.code = code;
+		this.statusCode = statusCode;
+	}
+}
+
 export interface PushResult {
-	ok: boolean;
-	statusCode?: number;
-	invalidSubscription?: boolean;
+	ok: true;
+	statusCode: number;
 }
 
 export const configureWebPush = (env: Env) => {
-	webpush.setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
+	if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
+		throw new PushDeliveryError("vapid_config_missing", "VAPID configuration is missing");
+	}
+	if (!env.VAPID_SUBJECT.startsWith("mailto:") && !env.VAPID_SUBJECT.startsWith("https://")) {
+		throw new PushDeliveryError("vapid_config_missing", "VAPID subject must start with mailto: or https://");
+	}
+	try {
+		webpush.setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
+	} catch (error) {
+		const message = error instanceof Error ? error.message.slice(0, 200) : "Unknown VAPID configuration error";
+		throw new PushDeliveryError("vapid_config_missing", `VAPID configuration is invalid: ${message}`);
+	}
+};
+
+export const errorCodeForStatus = (statusCode?: number): PushErrorCode => {
+	if (statusCode === 404 || statusCode === 410) return "push_subscription_expired";
+	if (statusCode === 401 || statusCode === 403) return "push_authentication_failed";
+	if (statusCode === 429) return "push_rate_limited";
+	return "push_delivery_failed";
 };
 
 export const sendPushPayload = async (env: Env, client: StoredClient, payload: PushPayload): Promise<PushResult> => {
+	if (!client.subscription.endpoint || !client.subscription.keys?.p256dh || !client.subscription.keys?.auth) {
+		throw new PushDeliveryError("invalid_subscription", "Push subscription is missing required fields");
+	}
 	if (env.VAPID_PRIVATE_KEY === "test_private_key") return { ok: true, statusCode: 201 };
 	configureWebPush(env);
 	try {
@@ -21,7 +61,7 @@ export const sendPushPayload = async (env: Env, client: StoredClient, payload: P
 		const statusCode = typeof error === "object" && error !== null && "statusCode" in error
 			? Number((error as { statusCode?: number }).statusCode)
 			: undefined;
-		return { ok: false, statusCode, invalidSubscription: statusCode === 404 || statusCode === 410 };
+		throw new PushDeliveryError(errorCodeForStatus(statusCode), "Push delivery failed", statusCode ?? null);
 	}
 };
 

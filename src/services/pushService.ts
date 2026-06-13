@@ -4,10 +4,29 @@ import { isIOS, isStandaloneMode } from '../utils/dateUtils'
 const CLIENT_ID_KEY = 'lunchreminder:push-client-id'
 
 export class PushServiceError extends Error {
-  constructor(message: string) {
+  code?: string
+
+  constructor(message: string, code?: string) {
     super(message)
     this.name = 'PushServiceError'
+    this.code = code
   }
+}
+
+const pushErrorMessages: Record<string, string> = {
+  push_subscription_expired: '推送订阅已失效，请关闭后重新启用推送',
+  push_authentication_failed: '推送身份验证失败，请检查服务器推送密钥',
+  push_rate_limited: '测试过于频繁，请稍后再试',
+  vapid_config_missing: '服务器推送配置不完整',
+  invalid_subscription: '浏览器推送订阅无效，请重新启用',
+  push_delivery_failed: '测试通知发送失败，请稍后重试',
+  internal_error: '服务暂时开小差了，请稍后重试',
+}
+
+export const getPushErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof PushServiceError) return error.message
+  if (error instanceof Error) return error.message
+  return fallback
 }
 
 const getApiUrl = () => {
@@ -53,7 +72,8 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   })
   const data = (await response.json().catch(() => ({}))) as { error?: string }
   if (!response.ok) {
-    throw new PushServiceError(data.error || `请求失败：${response.status}`)
+    const code = data.error || `http_${response.status}`
+    throw new PushServiceError(pushErrorMessages[code] || `请求失败：${response.status}`, code)
   }
   return data as T
 }

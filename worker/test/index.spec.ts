@@ -134,6 +134,55 @@ describe("LunchReminder Push Worker", () => {
 		expect((await call(`/api/subscriptions/${sampleClientId}/test`, { method: "POST", body: "{}" })).status).toBe(429);
 	});
 
+	it("returns safe push errors for missing VAPID configuration", async () => {
+		const envForTest = { ...testEnv(), VAPID_PRIVATE_KEY: "" };
+		await envForTest.REMINDERS.put(clientKey(sampleClientId), JSON.stringify({
+			version: 1,
+			clientId: sampleClientId,
+			subscription: sampleSubscription,
+			timezone: "Asia/Taipei",
+			settings: sampleSettings,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			lastSent: {},
+		} satisfies StoredClient));
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request(`/api/subscriptions/${sampleClientId}/test`, {
+			method: "POST",
+			body: "{}",
+		}), envForTest, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({ error: "vapid_config_missing" });
+	});
+
+	it("returns safe push errors for invalid subscriptions", async () => {
+		const envForTest = testEnv();
+		await envForTest.REMINDERS.put(clientKey(sampleClientId), JSON.stringify({
+			version: 1,
+			clientId: sampleClientId,
+			subscription: {
+				...sampleSubscription,
+				keys: { p256dh: sampleSubscription.keys.p256dh, auth: "" },
+			},
+			timezone: "Asia/Taipei",
+			settings: sampleSettings,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			lastSent: {},
+		} satisfies StoredClient));
+
+		const response = await call(`/api/subscriptions/${sampleClientId}/test`, {
+			method: "POST",
+			body: "{}",
+		});
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({ error: "invalid_subscription" });
+	});
+
 	it("converts timezone minute and avoids duplicate lastSent", async () => {
 		const local = getLocalMinute(new Date("2026-06-12T04:00:00.000Z"), "Asia/Taipei");
 		expect(local).toEqual({ dateKey: "2026-06-12", time: "12:00", weekday: 5 });

@@ -1,4 +1,5 @@
 import { reminderPayload, sendPushPayload } from "./push";
+import { getSafeErrorDetails } from "./errors";
 import type { Env, MealType, StoredClient } from "./types";
 import { clientKey, mealTypes } from "./types";
 
@@ -45,17 +46,18 @@ export const processClient = async (env: Env, client: StoredClient, now = new Da
 		if (!shouldSendMeal(client, mealType, local)) continue;
 		const meal = client.settings[mealType];
 		const body = client.settings.notificationMessages[mealType]?.[0] || meal.subtitle;
-		const result = await sendPushPayload(env, client, reminderPayload(mealType, `${meal.title}时间到啦`, body));
-		if (result.invalidSubscription) {
-			await env.REMINDERS.delete(clientKey(client.clientId));
-			return;
-		}
-		if (result.ok) {
+		try {
+			await sendPushPayload(env, client, reminderPayload(mealType, `${meal.title}时间到啦`, body));
 			client.lastSent[mealType] = `${local.dateKey}:${local.time}`;
 			client.updatedAt = now.toISOString();
 			updated = true;
-		} else {
-			console.warn(`push_failed:${mealType}:${result.statusCode ?? "unknown"}`);
+		} catch (error) {
+			const details = getSafeErrorDetails(error);
+			if (details.code === "push_subscription_expired") {
+				await env.REMINDERS.delete(clientKey(client.clientId));
+				return;
+			}
+			console.error("scheduled_push_failed", { ...details, mealType });
 		}
 	}
 	if (updated) {
