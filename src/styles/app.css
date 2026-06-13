@@ -571,6 +571,63 @@ img {
   padding-left: 20px;
 }
 
+.push-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 20px;
+  background: #fff8ef;
+}
+
+.push-card-header {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.push-card-header img {
+  width: 34px;
+  height: 34px;
+}
+
+.push-card h3 {
+  margin: 0;
+  color: #4a332a;
+  font-size: 15px;
+}
+
+.push-card p,
+.push-message {
+  margin: 3px 0 0;
+  color: #9a7562;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.push-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.primary-action,
+.secondary-action {
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.primary-action {
+  border: 0;
+  color: #fff;
+  background: linear-gradient(135deg, #ffa857, #ff8a35);
+}
+
+.secondary-action {
+  border: 1px solid rgba(154, 117, 98, 0.25);
+  color: #9a7562;
+  background: #fff;
+}
+
 .status-toasts {
   position: fixed;
   left: 50%;

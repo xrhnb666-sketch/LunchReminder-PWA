@@ -4,6 +4,7 @@ import { SplashScreen } from './components/SplashScreen'
 import { StatusToasts } from './components/StatusToasts'
 import { useLunchReminderStore } from './hooks/useLunchReminderStore'
 import { useNetworkStatus } from './hooks/useNetworkStatus'
+import { usePushNotifications } from './hooks/usePushNotifications'
 import { usePwaUpdateStatus } from './hooks/usePwaUpdateStatus'
 import { HistoryPage } from './pages/HistoryPage'
 import { HomePage } from './pages/HomePage'
@@ -17,6 +18,7 @@ const App = () => {
   const online = useNetworkStatus()
   const updateAvailable = usePwaUpdateStatus()
   const store = useLunchReminderStore()
+  const push = usePushNotifications(store.settings)
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setShowSplash(false), 800)
@@ -44,6 +46,7 @@ const App = () => {
         {currentPage === 'settings' && (
           <SettingsPage
             settings={store.settings}
+            push={push}
             onWeekdaysOnlyChange={store.setWeekdaysOnly}
             onSkipTodayChange={store.setSkipToday}
             onThemeModeChange={store.setThemeMode}
