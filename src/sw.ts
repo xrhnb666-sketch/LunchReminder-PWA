@@ -17,8 +17,10 @@ interface PushPayload {
   badge?: string
   tag?: string
   data?: {
+    type?: string
     url?: string
     mealType?: string
+    localDate?: string
     test?: boolean
   }
 }
@@ -67,17 +69,18 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const rawUrl = event.notification.data?.url
-  const targetUrl = typeof rawUrl === 'string' && rawUrl.startsWith('/') ? rawUrl : '/'
+  const targetPath = typeof rawUrl === 'string' && rawUrl.startsWith('/') && !rawUrl.startsWith('//') ? rawUrl : '/'
+  const targetUrl = new URL(targetPath, self.location.origin)
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         const url = new URL(client.url)
         if (url.origin === self.location.origin) {
-          return client.focus()
+          return client.navigate(targetUrl.href).then((navigatedClient) => (navigatedClient ?? client).focus())
         }
       }
-      return self.clients.openWindow(targetUrl)
+      return self.clients.openWindow(targetUrl.href)
     }),
   )
 })

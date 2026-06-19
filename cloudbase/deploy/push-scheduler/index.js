@@ -1,4 +1,4 @@
-const cloudbase = require("@cloudbase/node-sdk");
+﻿const cloudbase = require("@cloudbase/node-sdk");
 const { getSafeErrorDetails } = require("./shared/errors");
 const { processClient } = require("./shared/date-utils");
 
@@ -7,6 +7,7 @@ const cloudApp = cloudbase.init({
 });
 const db = cloudApp.database();
 const collection = db.collection("push_clients");
+const checkinsCollection = db.collection("meal_checkins");
 
 const PAGE_SIZE = 100;
 
@@ -33,7 +34,7 @@ exports.main = async (event) => {
 					failed += 1;
 					continue;
 				}
-				const result = await processClient({ collection, client, now });
+				const result = await processClient({ collection, checkinsCollection, client, now, db });
 				sent += result.sent;
 				removed += result.removed;
 				failed += result.failed;

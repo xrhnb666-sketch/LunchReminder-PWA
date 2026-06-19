@@ -100,13 +100,18 @@ const testPayload = () => ({
 	data: { url: "/", test: true },
 });
 
-const reminderPayload = (mealType, title, body) => ({
+const reminderPayload = (mealType, title, body, localDate) => ({
 	title,
 	body,
 	icon: "/icons/icon-192.png",
 	badge: "/icons/icon-192.png",
 	tag: `${mealType}-reminder`,
-	data: { url: "/", mealType },
+	data: {
+		type: "meal-reminder",
+		mealType,
+		localDate,
+		url: localDate ? `/?checkin=${mealType}&date=${localDate}` : "/",
+	},
 });
 
 module.exports = {

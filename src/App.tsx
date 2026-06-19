@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { BottomNavigation } from './components/BottomNavigation'
 import { SplashScreen } from './components/SplashScreen'
 import { StatusToasts } from './components/StatusToasts'
+import { useCheckins } from './hooks/useCheckins'
 import { useLunchReminderStore } from './hooks/useLunchReminderStore'
 import { useNetworkStatus } from './hooks/useNetworkStatus'
 import { usePushNotifications } from './hooks/usePushNotifications'
@@ -15,10 +16,19 @@ import type { AppPage } from './types/reminder'
 const App = () => {
   const [showSplash, setShowSplash] = useState(true)
   const [currentPage, setCurrentPage] = useState<AppPage>('home')
+  const [deepLinkSearch] = useState(() => window.location.search)
   const online = useNetworkStatus()
   const updateAvailable = usePwaUpdateStatus()
   const store = useLunchReminderStore()
   const push = usePushNotifications(store.settings)
+  const checkins = useCheckins(store.settings)
+  const { refreshHistory } = checkins
+  const handleHistoryRangeChange = useCallback(
+    (days: 7 | 30) => {
+      void refreshHistory(days)
+    },
+    [refreshHistory],
+  )
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setShowSplash(false), 800)
@@ -36,12 +46,29 @@ const App = () => {
           <HomePage
             settings={store.settings}
             nextReminder={store.nextReminder}
+            todayDate={checkins.todayDate}
+            todayByMeal={checkins.todayByMeal}
+            pendingAction={checkins.pendingAction}
+            deepLinkSearch={deepLinkSearch}
+            actionMessage={checkins.message}
+            actionError={checkins.actionError}
+            todayError={checkins.todayError}
             onMealEnabledChange={store.setMealEnabled}
             onMealTimeChange={store.setMealTime}
             onSkipTodayChange={store.setSkipToday}
+            onComplete={(mealType, localDate) => void checkins.submitComplete(mealType, localDate)}
+            onSnooze={(mealType, minutes, localDate) => void checkins.submitSnooze(mealType, minutes, localDate)}
+            onSkipMeal={(mealType, reason, localDate) => void checkins.submitSkip(mealType, reason, localDate)}
           />
         )}
-        {currentPage === 'history' && <HistoryPage history={store.history} />}
+        {currentPage === 'history' && (
+          <HistoryPage
+            records={checkins.historyRecords}
+            loading={checkins.historyLoading}
+            error={checkins.historyError}
+            onRangeChange={handleHistoryRangeChange}
+          />
+        )}
         {currentPage === 'statistics' && <StatisticsPage history={store.history} />}
         {currentPage === 'settings' && (
           <SettingsPage

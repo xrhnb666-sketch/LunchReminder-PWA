@@ -1,5 +1,6 @@
 import type { HistoryRecord, NextReminder, ReminderSettings } from '../types/reminder'
 import { mealLabels, mealOrder } from './defaults'
+import { isWeekday } from './weekday.ts'
 
 const toDateKey = (date: Date) => {
   const year = date.getFullYear()
@@ -14,11 +15,6 @@ const addDays = (date: Date, days: number) => {
   const next = new Date(date)
   next.setDate(next.getDate() + days)
   return next
-}
-
-const isWeekday = (date: Date) => {
-  const day = date.getDay()
-  return day !== 0 && day !== 6
 }
 
 const parseTimeOnDate = (date: Date, time: string) => {

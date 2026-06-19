@@ -1,5 +1,4 @@
 const cloudbase = require("@cloudbase/node-sdk");
-const cors = require("cors");
 const express = require("express");
 const {
 	BadRequest,
@@ -18,37 +17,53 @@ const {
 const {
 	assertClientId,
 	assertTimezone,
+	assertDate,
+	assertMealType,
+	assertTime,
 	validateContentEncodings,
 	validateSettings,
 	validateSubscription,
 } = require("../shared/validation");
+const {
+	completeCheckin,
+	listHistoryCheckins,
+	listTodayCheckins,
+	skipCheckin,
+	snoozeCheckin,
+	toPublicRecord,
+} = require("../shared/checkins");
+const { getLocalMinute } = require("../shared/date-utils");
 
 const cloudApp = cloudbase.init({
 	env: cloudbase.SYMBOL_CURRENT_ENV,
 });
 const db = cloudApp.database();
 const collection = db.collection("push_clients");
+const checkinsCollection = db.collection("meal_checkins");
 
 const allowedOrigins = new Set([
 	"https://lunch-reminder-d0gm3tznc07536699-1443161613.tcloudbaseapp.com",
+	"https://lunch-reminder-pwa-lunch-reminder-d0gm3tznc07536699.webapps.tcloudbase.com",
 	"http://localhost:5173",
 	"http://127.0.0.1:5173",
 ]);
 
 const app = express();
 
-app.use(cors({
-	origin(origin, callback) {
-		if (!origin || origin === process.env.ALLOWED_ORIGIN || allowedOrigins.has(origin)) {
-			callback(null, origin || false);
-			return;
-		}
-		callback(new BadRequest("origin_not_allowed"));
-	},
-	methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-	allowedHeaders: ["Content-Type"],
-	maxAge: 86400,
-}));
+const isOriginAllowed = (origin) =>
+	!origin || origin === process.env.ALLOWED_ORIGIN || allowedOrigins.has(origin);
+
+app.use((req, res, next) => {
+	if (!isOriginAllowed(req.get("origin"))) {
+		res.status(403).json({ error: "origin_not_allowed" });
+		return;
+	}
+	if (req.method === "OPTIONS") {
+		res.status(204).end();
+		return;
+	}
+	next();
+});
 app.use(express.json({ limit: "32kb" }));
 
 const getStoredClient = async (clientId) => {
@@ -216,6 +231,62 @@ app.post("/api/subscriptions/:clientId/test-empty", async (req, res, next) => {
 	}
 });
 
+app.get("/api/checkins/:clientId/today", async (req, res, next) => {
+	try {
+		const clientId = assertClientId(req.params.clientId);
+		const timezone = assertTimezone(req.query.timezone || "UTC");
+		const localDate = getLocalMinute(new Date(), timezone).dateKey;
+		const records = await listTodayCheckins(checkinsCollection, clientId, localDate);
+		res.json({ ok: true, localDate, records: records.map(toPublicRecord) });
+	} catch (error) {
+		next(error);
+	}
+});
+
+app.get("/api/checkins/:clientId", async (req, res, next) => {
+	try {
+		const clientId = assertClientId(req.params.clientId);
+		if (typeof req.query.from !== "string" || typeof req.query.to !== "string") {
+			throw new BadRequest("invalid_date");
+		}
+		const records = await listHistoryCheckins(checkinsCollection, clientId, req.query.from, req.query.to, db);
+		res.json({ ok: true, records: records.map(toPublicRecord) });
+	} catch (error) {
+		next(error);
+	}
+});
+
+app.post("/api/checkins/:clientId/:localDate/:mealType/action", async (req, res, next) => {
+	try {
+		const clientId = assertClientId(req.params.clientId);
+		const input = {
+			clientId,
+			localDate: assertDate(req.params.localDate),
+			mealType: assertMealType(req.params.mealType),
+			timezone: assertTimezone(req.body?.timezone),
+			scheduledTime: assertTime(req.body?.scheduledTime),
+		};
+		let record;
+		if (req.body?.action === "complete") {
+			record = await completeCheckin(checkinsCollection, input, new Date(), db);
+		} else if (req.body?.action === "snooze") {
+			record = await snoozeCheckin(checkinsCollection, input, req.body?.snoozeMinutes, new Date(), db);
+		} else if (req.body?.action === "skip") {
+			record = await skipCheckin(checkinsCollection, input, req.body?.skipReason, new Date(), db);
+		} else {
+			throw new BadRequest("invalid_action");
+		}
+		res.json({ ok: true, record: toPublicRecord(record) });
+	} catch (error) {
+		if (error instanceof BadRequest) {
+			next(error);
+			return;
+		}
+		console.error("checkin_update_failed", getSafeErrorDetails(error));
+		res.status(500).json({ error: "checkin_update_failed" });
+	}
+});
+
 app.use((error, _req, res, _next) => {
 	if (error instanceof BadRequest) {
 		res.status(error.message === "origin_not_allowed" ? 403 : 400).json({ error: error.message });
@@ -225,4 +296,23 @@ app.use((error, _req, res, _next) => {
 	res.status(500).json({ error: "internal_error" });
 });
 
+const startServer = () => {
+	const port = Number(process.env.PORT || 9000);
+	const server = app.listen(port, "0.0.0.0", () => {
+		console.log(`LunchReminder push API listening on port ${port}`);
+	});
+	server.on("error", (error) => {
+		console.error("push_api_start_failed", getSafeErrorDetails(error));
+		process.exit(1);
+	});
+	return server;
+};
+
+if (require.main === module) {
+	startServer();
+}
+
 exports.main = app;
+exports.app = app;
+exports.isOriginAllowed = isOriginAllowed;
+exports.startServer = startServer;

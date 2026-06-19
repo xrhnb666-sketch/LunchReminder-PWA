@@ -1,6 +1,7 @@
 const { BadRequest } = require("./errors");
 
 const mealTypes = ["breakfast", "lunch", "dinner"];
+const skipReasons = ["already_ate", "not_hungry", "unwell", "inconvenient", "other"];
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -18,6 +19,36 @@ const assertTimezone = (timezone) => {
 	} catch {
 		throw new BadRequest("invalid_timezone");
 	}
+};
+
+const assertDate = (value) => {
+	if (typeof value !== "string" || !datePattern.test(value)) throw new BadRequest("invalid_date");
+	const date = new Date(`${value}T00:00:00.000Z`);
+	if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+		throw new BadRequest("invalid_date");
+	}
+	return value;
+};
+
+const assertMealType = (value) => {
+	if (!mealTypes.includes(value)) throw new BadRequest("invalid_meal_type");
+	return value;
+};
+
+const assertTime = (value) => {
+	if (typeof value !== "string" || !timePattern.test(value)) throw new BadRequest("invalid_time");
+	return value;
+};
+
+const assertSnoozeMinutes = (value) => {
+	const minutes = Number(value);
+	if (![10, 20, 30].includes(minutes)) throw new BadRequest("invalid_snooze_minutes");
+	return minutes;
+};
+
+const assertSkipReason = (value) => {
+	if (!skipReasons.includes(value)) throw new BadRequest("invalid_skip_reason");
+	return value;
 };
 
 const shortText = (value, fallback) => {
@@ -118,9 +149,15 @@ const validateContentEncodings = (value) => {
 };
 
 module.exports = {
+	assertDate,
 	mealTypes,
 	assertClientId,
+	assertMealType,
+	assertSkipReason,
+	assertSnoozeMinutes,
+	assertTime,
 	assertTimezone,
+	skipReasons,
 	validateContentEncodings,
 	validateSettings,
 	validateSubscription,

@@ -1,7 +1,7 @@
 import type { ReminderSettings } from '../types/reminder'
 import { isIOS, isStandaloneMode } from '../utils/dateUtils'
+import { getStablePushClientId } from './clientId.ts'
 
-const CLIENT_ID_KEY = 'lunchreminder:push-client-id'
 
 interface SubscriptionDiagnostics {
   exists: boolean
@@ -56,11 +56,7 @@ const getApiUrl = () => {
 }
 
 export const getPushClientId = () => {
-  const existing = window.localStorage.getItem(CLIENT_ID_KEY)
-  if (existing) return existing
-  const clientId = crypto.randomUUID()
-  window.localStorage.setItem(CLIENT_ID_KEY, clientId)
-  return clientId
+  return getStablePushClientId()
 }
 
 const supportedContentEncodings = () => {
