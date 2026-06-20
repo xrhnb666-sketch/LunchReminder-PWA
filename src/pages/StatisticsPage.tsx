@@ -1,10 +1,11 @@
 import { EmptyState } from '../components/EmptyState'
-import type { HistoryRecord, MealType } from '../types/reminder'
+import type { MealCheckin } from '../types/checkin'
+import type { MealType } from '../types/reminder'
 import { assets } from '../utils/assets'
-import { getHistoryStats } from '../utils/dateUtils'
+import { getCheckinStats } from '../utils/checkinStats'
 
 interface StatisticsPageProps {
-  history: HistoryRecord[]
+  records: MealCheckin[]
 }
 
 const distribution: Array<{ meal: MealType; label: string; color: string }> = [
@@ -13,10 +14,10 @@ const distribution: Array<{ meal: MealType; label: string; color: string }> = [
   { meal: 'dinner', label: '晚餐', color: '#6EAE67' },
 ]
 
-export const StatisticsPage = ({ history }: StatisticsPageProps) => {
-  const stats = getHistoryStats(history)
+export const StatisticsPage = ({ records }: StatisticsPageProps) => {
+  const stats = getCheckinStats(records)
 
-  if (stats.total === 0) {
+  if (!stats.hasData) {
     return (
       <main className="page statistics-page">
         <header className="page-header">
@@ -40,12 +41,22 @@ export const StatisticsPage = ({ history }: StatisticsPageProps) => {
       </header>
 
       <section className="stats-card">
-        <h2>今日数据</h2>
+        <h2>最近 7 天</h2>
         <div className="stats-grid">
-          <StatCell label="今日提醒" value={stats.today} />
-          <StatCell label="本周提醒" value={stats.week} />
-          <StatCell label="本月提醒" value={stats.month} />
-          <StatCell label="连续记录" value={stats.streakDays} />
+          <StatCell label="总完成" value={stats.last7.completed} />
+          <StatCell label="完成率" value={`${stats.last7.completionRate}%`} />
+          <StatCell label="打卡天数" value={stats.last7.activeDays} />
+          <StatCell label="已跳过" value={stats.last7.skipped} />
+        </div>
+      </section>
+
+      <section className="stats-card">
+        <h2>最近 30 天</h2>
+        <div className="stats-grid">
+          <StatCell label="总完成" value={stats.last30.completed} />
+          <StatCell label="完成率" value={`${stats.last30.completionRate}%`} />
+          <StatCell label="打卡天数" value={stats.last30.activeDays} />
+          <StatCell label="已跳过" value={stats.last30.skipped} />
         </div>
       </section>
 
@@ -53,15 +64,15 @@ export const StatisticsPage = ({ history }: StatisticsPageProps) => {
         <h2>餐次分布</h2>
         <div className="distribution-list">
           {distribution.map((item) => {
-            const count = stats[item.meal]
-            const percent = Math.round((count / stats.total) * 100)
+            const count = stats.completedByMeal[item.meal]
+            const percent = stats.last30.completed === 0 ? 0 : Math.round((count / stats.last30.completed) * 100)
             return (
               <div key={item.meal} className="distribution-row">
                 <span>{item.label}</span>
                 <div className="progress-track">
                   <div style={{ width: `${percent}%`, background: item.color }} />
                 </div>
-                <strong>{percent}%</strong>
+                <strong>{count}</strong>
               </div>
             )
           })}
@@ -71,7 +82,7 @@ export const StatisticsPage = ({ history }: StatisticsPageProps) => {
   )
 }
 
-const StatCell = ({ label, value }: { label: string; value: number }) => (
+const StatCell = ({ label, value }: { label: string; value: number | string }) => (
   <div className="stat-cell">
     <strong>{value}</strong>
     <span>{label}</span>

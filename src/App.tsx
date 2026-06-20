@@ -35,6 +35,12 @@ const App = () => {
     return () => window.clearTimeout(timeout)
   }, [])
 
+  useEffect(() => {
+    if (currentPage === 'statistics') {
+      void refreshHistory(30)
+    }
+  }, [currentPage, refreshHistory])
+
   if (showSplash) {
     return <SplashScreen />
   }
@@ -69,7 +75,7 @@ const App = () => {
             onRangeChange={handleHistoryRangeChange}
           />
         )}
-        {currentPage === 'statistics' && <StatisticsPage history={store.history} />}
+        {currentPage === 'statistics' && <StatisticsPage records={checkins.historyRecords} />}
         {currentPage === 'settings' && (
           <SettingsPage
             settings={store.settings}
